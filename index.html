@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Таблица</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: sans-serif; background: #f5f5f5; padding: 10px; }
+        .header { text-align: center; padding: 15px; font-size: 20px; font-weight: bold; }
+        .toolbar { display: flex; gap: 10px; padding: 10px; background: white; margin-bottom: 10px; border-radius: 8px; }
+        button { padding: 8px 16px; border: none; border-radius: 4px; background: #1976d2; color: white; cursor: pointer; }
+        .table-container { overflow-x: auto; background: white; border-radius: 8px; }
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #e3f2fd; padding: 10px; font-weight: 600; color: #1976d2; }
+        td { border: 1px solid #e0e0e0; padding: 0; }
+        input { width: 100%; height: 40px; border: none; padding: 8px; font-size: 14px; outline: none; }
+        input:focus { background: #e3f2fd; }
+        .status { padding: 10px; color: #666; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <div class="header">Таблица</div>
+    <div class="toolbar">
+        <button onclick="addRow()">+ Строка</button>
+        <button onclick="addCol()">+ Колонка</button>
+        <button onclick="saveData()">Сохранить</button>
+        <button onclick="clearAll()">Очистить</button>
+        <label><input type="checkbox" id="showFormulas"> Показывать формулы</label>
+    </div>
+    <div class="table-container">
+        <table id="sheet">
+            <thead><tr id="header-row"><th></th><th>A</th><th>B</th><th>C</th><th>D</th><th>E</th></tr></thead>
+            <tbody id="sheet-body"></tbody>
+        </table>
+    </div>
+    <div class="status" id="status">Готово</div>
+
+    <script>
+        const sheet = {};
+        let rows = 10, cols = 5;
+
+        function init() {
+            loadData();
+            render();
+        }
+
+        function render() {
+            const tbody = document.getElementById('sheet-body');
+            tbody.innerHTML = '';
+            const showFormulas = document.getElementById('showFormulas').checked;
+
+            for (let r = 0; r < rows; r++) {
+                const tr = document.createElement('tr');
+                const th = document.createElement('th');
+                th.textContent = r + 1;
+                tr.appendChild(th);
+
+                for (let c = 0; c < cols; c++) {
+                    const td = document.createElement('td');
+                    const input = document.createElement('input');
+                    const key = `${r},${c}`;
+                    const cell = sheet[key] || {};
+                    
+                    if (showFormulas && cell.formula) {
+                        input.value = cell.formula;
+                    } else {
+                        input.value = cell.computed || cell.value || '';
+                    }
+
+                    input.onblur = function() {
+                        const val = this.value;
+                        if (val.startsWith('=')) {
+                            sheet[key] = { formula: val, computed: calcFormula(val.slice(1)) };
+                        } else {
+                            sheet[key] = { value: val, computed: val };
+                        }
+                        render();
+                        saveData();
+                    };
+
+                    td.appendChild(input);
+                    tr.appendChild(td);
+                }
+                tbody.appendChild(tr);
+            }
+        }
+
+        function calcFormula(expr) {
+            try {
+                // Простые ссылки A1, B2
+                let processed = expr.replace(/([A-Z]+)(\d+)/g, (m, col, row) => {
+                    const c = col.charCodeAt(0) - 65;
+                    const r = parseInt(row) - 1;
+                    const key = `${r},${c}`;
+                    const cell = sheet[key] || {};
+                    const val = parseFloat(cell.computed || cell.value || 0);
+                    return isNaN(val) ? 0 : val;
+                });
+                return eval(processed) || 0;
+            } catch (e) {
+                return '#ERROR';
+            }
+        }
+
+        function saveData() {
+            localStorage.setItem('sheet_data', JSON.stringify(sheet));
+            localStorage.setItem('sheet_rows', rows);
+            localStorage.setItem('sheet_cols', cols);
+            document.getElementById('status').textContent = 'Сохранено ' + new Date().toLocaleTimeString();
+        }
+
+        function loadData() {
+            const data = localStorage.getItem('sheet_data');
+            if (data) Object.assign(sheet, JSON.parse(data));
+            rows = parseInt(localStorage.getItem('sheet_rows')) || 10;
+            cols = parseInt(localStorage.getItem('sheet_cols')) || 5;
+        }
+
+        function addRow() { rows++; render(); }
+        function addCol() { cols++; updateHeader(); render(); }
+        function updateHeader() {
+            const hr = document.getElementById('header-row');
+            hr.innerHTML = '<th></th>';
+            for (let i = 0; i < cols; i++) hr.innerHTML += `<th>${String.fromCharCode(65 + i)}</th>`;
+        }
+        function clearAll() { if (confirm('Очистить?')) { Object.keys(sheet).forEach(k => delete sheet[k]); saveData(); render(); } }
+
+        document.getElementById('showFormulas').onchange = render;
+        init();
+    </script>
+</body>
+</html>
