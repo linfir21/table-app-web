@@ -38,11 +38,9 @@ def main():
     st.session_state.rows = int(rows)
     st.session_state.cols = int(cols)
     
-    # Переключатель режима — просто чекбокс без value
+    # Переключатель режима
     st.sidebar.header("Режим отображения")
     show_formulas = st.sidebar.checkbox("Показывать формулы")
-    
-    # Сохраняем в session_state для table.py
     st.session_state.show_formulas = show_formulas
     
     # Действия
