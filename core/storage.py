@@ -13,7 +13,7 @@ class Storage:
     def save(self, data: dict):
         """Сохранить данные в JSON"""
         serializable = {
-            f"{k[0]},{k[1]}": v 
+            f"{k[0]},{k[1]}": v
             for k, v in data.items()
         }
         with open(self.filepath, 'w', encoding='utf-8') as f:
@@ -28,6 +28,6 @@ class Storage:
             raw = json.load(f)
 
         return {
-            tuple(map(int, k.split(','))): v 
+            tuple(map(int, k.split(','))): v
             for k, v in raw.items()
         }
