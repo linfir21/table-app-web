@@ -8,14 +8,22 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: sans-serif; background: #f5f5f5; padding: 10px; }
         .header { text-align: center; padding: 15px; font-size: 20px; font-weight: bold; }
-        .toolbar { display: flex; gap: 10px; padding: 10px; background: white; margin-bottom: 10px; border-radius: 8px; }
+        .toolbar { display: flex; gap: 10px; padding: 10px; background: white; margin-bottom: 10px; border-radius: 8px; flex-wrap: wrap; }
         button { padding: 8px 16px; border: none; border-radius: 4px; background: #1976d2; color: white; cursor: pointer; }
+        button:hover { background: #1565c0; }
+        button.danger { background: #d32f2f; }
+        button.danger:hover { background: #b71c1c; }
         .table-container { overflow-x: auto; background: white; border-radius: 8px; }
         table { width: 100%; border-collapse: collapse; }
-        th { background: #e3f2fd; padding: 10px; font-weight: 600; color: #1976d2; }
-        td { border: 1px solid #e0e0e0; padding: 0; }
-        input { width: 100%; height: 40px; border: none; padding: 8px; font-size: 14px; outline: none; }
+        th { background: #e3f2fd; padding: 10px; font-weight: 600; color: #1976d2; position: relative; }
+        th .del-btn { position: absolute; right: 2px; top: 2px; font-size: 10px; cursor: pointer; color: #d32f2f; display: none; }
+        th:hover .del-btn { display: block; }
+        td { border: 1px solid #e0e0e0; padding: 0; position: relative; }
+        td .del-btn { position: absolute; left: 2px; top: 2px; font-size: 10px; cursor: pointer; color: #d32f2f; display: none; z-index: 10; }
+        td:hover .del-btn { display: block; }
+        input { width: 100%; height: 40px; border: none; padding: 8px; font-size: 14px; outline: none; background: transparent; }
         input:focus { background: #e3f2fd; }
+        input.show-formula { color: #1976d2; font-style: italic; }
         .status { padding: 10px; color: #666; font-size: 12px; }
     </style>
 </head>
@@ -23,14 +31,15 @@
     <div class="header">Таблица</div>
     <div class="toolbar">
         <button onclick="addRow()">+ Строка</button>
+        <button onclick="removeRow()">- Строка</button>
         <button onclick="addCol()">+ Колонка</button>
+        <button onclick="removeCol()">- Колонка</button>
         <button onclick="saveData()">Сохранить</button>
-        <button onclick="clearAll()">Очистить</button>
-        <label><input type="checkbox" id="showFormulas"> Показывать формулы</label>
+        <button class="danger" onclick="clearAll()">Очистить</button>
     </div>
     <div class="table-container">
         <table id="sheet">
-            <thead><tr id="header-row"><th></th><th>A</th><th>B</th><th>C</th><th>D</th><th>E</th></tr></thead>
+            <thead><tr id="header-row"><th></th><th>A<span class="del-btn" onclick="removeColByIdx(0)">×</span></th><th>B<span class="del-btn" onclick="removeColByIdx(1)">×</span></th><th>C<span class="del-btn" onclick="removeColByIdx(2)">×</span></th><th>D<span class="del-btn" onclick="removeColByIdx(3)">×</span></th><th>E<span class="del-btn" onclick="removeColByIdx(4)">×</span></th></tr></thead>
             <tbody id="sheet-body"></tbody>
         </table>
     </div>
@@ -48,12 +57,11 @@
         function render() {
             const tbody = document.getElementById('sheet-body');
             tbody.innerHTML = '';
-            const showFormulas = document.getElementById('showFormulas').checked;
 
             for (let r = 0; r < rows; r++) {
                 const tr = document.createElement('tr');
                 const th = document.createElement('th');
-                th.textContent = r + 1;
+                th.innerHTML = `${r + 1}<span class="del-btn" onclick="removeRowByIdx(${r})">×</span>`;
                 tr.appendChild(th);
 
                 for (let c = 0; c < cols; c++) {
@@ -62,21 +70,41 @@
                     const key = `${r},${c}`;
                     const cell = sheet[key] || {};
                     
-                    if (showFormulas && cell.formula) {
-                        input.value = cell.formula;
-                    } else {
-                        input.value = cell.computed || cell.value || '';
+                    // Показываем результат, но при фокусе — формулу
+                    input.value = cell.computed || cell.value || '';
+                    if (cell.formula) {
+                        input.dataset.formula = cell.formula;
                     }
 
+                    // При фокусе показываем формулу
+                    input.onfocus = function() {
+                        if (this.dataset.formula) {
+                            this.value = this.dataset.formula;
+                            this.classList.add('show-formula');
+                        }
+                    };
+
+                    // При потере фокуса — сохраняем и показываем результат
                     input.onblur = function() {
                         const val = this.value;
+                        this.classList.remove('show-formula');
+                        
                         if (val.startsWith('=')) {
-                            sheet[key] = { formula: val, computed: calcFormula(val.slice(1)) };
+                            const result = calcFormula(val.slice(1));
+                            sheet[key] = { formula: val, computed: result };
+                            this.dataset.formula = val;
+                            this.value = result;
                         } else {
                             sheet[key] = { value: val, computed: val };
+                            delete this.dataset.formula;
+                            this.value = val;
                         }
-                        render();
                         saveData();
+                    };
+
+                    // Enter = потеря фокуса
+                    input.onkeydown = function(e) {
+                        if (e.key === 'Enter') this.blur();
                     };
 
                     td.appendChild(input);
@@ -88,7 +116,6 @@
 
         function calcFormula(expr) {
             try {
-                // Простые ссылки A1, B2
                 let processed = expr.replace(/([A-Z]+)(\d+)/g, (m, col, row) => {
                     const c = col.charCodeAt(0) - 65;
                     const r = parseInt(row) - 1;
@@ -117,16 +144,61 @@
             cols = parseInt(localStorage.getItem('sheet_cols')) || 5;
         }
 
-        function addRow() { rows++; render(); }
-        function addCol() { cols++; updateHeader(); render(); }
         function updateHeader() {
             const hr = document.getElementById('header-row');
             hr.innerHTML = '<th></th>';
-            for (let i = 0; i < cols; i++) hr.innerHTML += `<th>${String.fromCharCode(65 + i)}</th>`;
+            for (let i = 0; i < cols; i++) {
+                hr.innerHTML += `<th>${String.fromCharCode(65 + i)}<span class="del-btn" onclick="removeColByIdx(${i})">×</span></th>`;
+            }
         }
-        function clearAll() { if (confirm('Очистить?')) { Object.keys(sheet).forEach(k => delete sheet[k]); saveData(); render(); } }
 
-        document.getElementById('showFormulas').onchange = render;
+        function addRow() { rows++; render(); saveData(); }
+        function removeRow() { if (rows > 1) { rows--; render(); saveData(); } }
+        function removeRowByIdx(idx) { 
+            if (rows > 1) {
+                // Удаляем все ячейки этой строки
+                for (let c = 0; c < cols; c++) delete sheet[`${idx},${c}`];
+                // Сдвигаем оставшиеся
+                for (let r = idx; r < rows - 1; r++) {
+                    for (let c = 0; c < cols; c++) {
+                        sheet[`${r},${c}`] = sheet[`${r+1},${c}`];
+                        delete sheet[`${r+1},${c}`];
+                    }
+                }
+                rows--;
+                render();
+                saveData();
+            }
+        }
+        
+        function addCol() { cols++; updateHeader(); render(); saveData(); }
+        function removeCol() { if (cols > 1) { cols--; updateHeader(); render(); saveData(); } }
+        function removeColByIdx(idx) {
+            if (cols > 1) {
+                // Удаляем все ячейки этой колонки
+                for (let r = 0; r < rows; r++) delete sheet[`${r},${idx}`];
+                // Сдвигаем оставшиеся
+                for (let r = 0; r < rows; r++) {
+                    for (let c = idx; c < cols - 1; c++) {
+                        sheet[`${r},${c}`] = sheet[`${r},${c+1}`];
+                        delete sheet[`${r},${c+1}`];
+                    }
+                }
+                cols--;
+                updateHeader();
+                render();
+                saveData();
+            }
+        }
+
+        function clearAll() { 
+            if (confirm('Очистить всю таблицу?')) { 
+                Object.keys(sheet).forEach(k => delete sheet[k]); 
+                saveData(); 
+                render(); 
+            } 
+        }
+
         init();
     </script>
 </body>
