@@ -6,20 +6,8 @@ def render_table(sheet, rows, cols):
     """Отрисовать таблицу"""
     show_formulas = st.session_state.get('show_formulas', False)
     
-    # Инициализация значений
-    for row in range(rows):
-        for col_idx in range(1, cols + 1):
-            key = f"{row},{col_idx}"
-            cell_key = f"val_{key}"
-            
-            cell = sheet.get(row, col_idx - 1)
-            
-            if show_formulas:
-                val = cell.get("formula") or str(cell.get("computed") or cell.get("value") or "")
-            else:
-                val = str(cell.get("computed") or cell.get("value") or "")
-            
-            st.session_state[cell_key] = val
+    # Собираем все изменения, потом одно сохранение
+    changes = []
     
     # Заголовки
     header_cols = st.columns([0.5] + [1] * cols)
@@ -40,19 +28,34 @@ def render_table(sheet, rows, cols):
             key = f"{row},{col_idx}"
             cell_key = f"val_{key}"
             
+            cell = sheet.get(row, col_idx - 1)
+            
+            if show_formulas:
+                display = cell.get("formula") or str(cell.get("computed") or cell.get("value") or "")
+            else:
+                display = str(cell.get("computed") or cell.get("value") or "")
+            
+            # Устанавливаем начальное значение в session_state
+            if cell_key not in st.session_state:
+                st.session_state[cell_key] = display
+            
             with col:
-                # Простой text_input без on_change
                 new_val = st.text_input(
                     label=f"R{row}C{col_idx}",
                     key=cell_key,
                     label_visibility="collapsed"
                 )
                 
-                # Сохраняем при изменении через кнопку или автоматически
-                # Проверяем изменение вручную
-                cell = sheet.get(row, col_idx - 1)
+                # Проверяем изменение
                 old_val = cell.get("formula") or str(cell.get("computed") or cell.get("value") or "")
-                
                 if new_val != old_val:
-                    sheet.set(row, col_idx - 1, new_val)
-                    st.rerun()
+                    changes.append((row, col_idx - 1, new_val))
+    
+    # Применяем все изменения после рендера
+    for row, col, val in changes:
+        sheet.set(row, col, val)
+    
+    # Если были изменения — показываем кнопку применить
+    if changes:
+        if st.button("Применить изменения", key="apply_changes"):
+            st.rerun()
