@@ -23,7 +23,7 @@ def main():
         "Количество строк",
         min_value=1,
         max_value=MAX_ROWS,
-        value=st.session_state.get('rows', DEFAULT_ROWS),
+        value=DEFAULT_ROWS,
         step=1
     )
     
@@ -31,17 +31,9 @@ def main():
         "Количество колонок",
         min_value=1,
         max_value=MAX_COLS,
-        value=st.session_state.get('cols', DEFAULT_COLS),
+        value=DEFAULT_COLS,
         step=1
     )
-    
-    st.session_state.rows = int(rows)
-    st.session_state.cols = int(cols)
-    
-    # Переключатель режима
-    st.sidebar.header("Режим отображения")
-    show_formulas = st.sidebar.checkbox("Показывать формулы")
-    st.session_state.show_formulas = show_formulas
     
     # Действия
     st.sidebar.header("Действия")
@@ -51,18 +43,15 @@ def main():
         st.sidebar.success("Сохранено!")
     
     if st.sidebar.button("🗑️ Очистить всё"):
-        confirm = st.sidebar.checkbox("Подтвердить удаление")
-        if confirm:
-            sheet.clear()
-            st.rerun()
+        sheet.clear()
+        st.rerun()
     
     # Отрисовка
-    render_table(sheet, st.session_state.rows, st.session_state.cols)
+    render_table(sheet, int(rows), int(cols))
     
     # Статус
     total = len(sheet._data)
-    formulas = sum(1 for c in sheet._data.values() if c.get('formula'))
-    st.write(f"Ячеек заполнено: {total} | Формул: {formulas}")
+    st.write(f"Ячеек заполнено: {total}")
 
 
 if __name__ == "__main__":
