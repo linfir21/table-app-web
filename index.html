@@ -8,11 +8,16 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: sans-serif; background: #f5f5f5; padding: 10px; }
         .header { text-align: center; padding: 15px; font-size: 20px; font-weight: bold; }
-        .toolbar { display: flex; gap: 10px; padding: 10px; background: white; margin-bottom: 10px; border-radius: 8px; flex-wrap: wrap; }
+        .toolbar { display: flex; gap: 10px; padding: 10px; background: white; margin-bottom: 10px; border-radius: 8px; flex-wrap: wrap; align-items: center; }
         button { padding: 8px 16px; border: none; border-radius: 4px; background: #1976d2; color: white; cursor: pointer; }
         button:hover { background: #1565c0; }
         button.danger { background: #d32f2f; }
         button.danger:hover { background: #b71c1c; }
+        button.formula-btn { background: #388e3c; }
+        button.formula-btn:hover { background: #2e7d32; }
+        select { padding: 8px; border-radius: 4px; border: 1px solid #ccc; }
+        .formula-panel { display: none; padding: 10px; background: #e8f5e9; margin-bottom: 10px; border-radius: 8px; }
+        .formula-panel.active { display: block; }
         .table-container { overflow-x: auto; background: white; border-radius: 8px; }
         table { width: 100%; border-collapse: collapse; }
         th { background: #e3f2fd; padding: 10px; font-weight: 600; color: #1976d2; position: relative; }
@@ -24,33 +29,64 @@
         input { width: 100%; height: 40px; border: none; padding: 8px; font-size: 14px; outline: none; background: transparent; }
         input:focus { background: #e3f2fd; }
         input.show-formula { color: #1976d2; font-style: italic; }
+        input.number { text-align: right; }
+        input.date { color: #7b1fa2; }
         .status { padding: 10px; color: #666; font-size: 12px; }
+        .chart-container { margin-top: 20px; padding: 20px; background: white; border-radius: 8px; display: none; }
+        .chart-container.active { display: block; }
+        canvas { max-width: 100%; }
     </style>
 </head>
 <body>
     <div class="header">Таблица</div>
+    
     <div class="toolbar">
         <button onclick="addRow()">+ Строка</button>
         <button onclick="removeRow()">- Строка</button>
         <button onclick="addCol()">+ Колонка</button>
         <button onclick="removeCol()">- Колонка</button>
+        <button class="formula-btn" onclick="toggleFormulaPanel()">Функции</button>
+        <button onclick="toggleChart()">График</button>
         <button onclick="saveData()">Сохранить</button>
         <button class="danger" onclick="clearAll()">Очистить</button>
     </div>
+
+    <div class="formula-panel" id="formulaPanel">
+        <strong>Функции:</strong>
+        <button class="formula-btn" onclick="insertFormula('=SUM(A1:A5)')">SUM</button>
+        <button class="formula-btn" onclick="insertFormula('=AVERAGE(A1:A5)')">AVERAGE</button>
+        <button class="formula-btn" onclick="insertFormula('=MIN(A1:A5)')">MIN</button>
+        <button class="formula-btn" onclick="insertFormula('=MAX(A1:A5)')">MAX</button>
+        <button class="formula-btn" onclick="insertFormula('=COUNT(A1:A5)')">COUNT</button>
+    </div>
+
     <div class="table-container">
         <table id="sheet">
-            <thead><tr id="header-row"><th></th><th>A<span class="del-btn" onclick="removeColByIdx(0)">×</span></th><th>B<span class="del-btn" onclick="removeColByIdx(1)">×</span></th><th>C<span class="del-btn" onclick="removeColByIdx(2)">×</span></th><th>D<span class="del-btn" onclick="removeColByIdx(3)">×</span></th><th>E<span class="del-btn" onclick="removeColByIdx(4)">×</span></th></tr></thead>
+            <thead><tr id="header-row"><th></th></tr></thead>
             <tbody id="sheet-body"></tbody>
         </table>
     </div>
+
+    <div class="chart-container" id="chartContainer">
+        <h3>График</h3>
+        <canvas id="chartCanvas" width="800" height="400"></canvas>
+        <div>
+            <label>Данные: от <input type="text" id="chartFrom" value="A1" size="3"> до <input type="text" id="chartTo" value="A10" size="3"></label>
+            <button onclick="drawChart()">Построить</button>
+        </div>
+    </div>
+
     <div class="status" id="status">Готово</div>
 
     <script>
         const sheet = {};
         let rows = 10, cols = 5;
+        let activeInput = null;
+        let isFormulaMode = false;
 
         function init() {
             loadData();
+            updateHeader();
             render();
         }
 
@@ -70,41 +106,61 @@
                     const key = `${r},${c}`;
                     const cell = sheet[key] || {};
                     
-                    // Показываем результат, но при фокусе — формулу
                     input.value = cell.computed || cell.value || '';
-                    if (cell.formula) {
-                        input.dataset.formula = cell.formula;
-                    }
+                    if (cell.formula) input.dataset.formula = cell.formula;
+                    
+                    // Формат ячейки
+                    if (cell.format === 'number') input.classList.add('number');
+                    if (cell.format === 'date') input.classList.add('date');
 
-                    // При фокусе показываем формулу
+                    // Клик на ячейку при вводе формулы
+                    input.onclick = function() {
+                        if (isFormulaMode && activeInput && activeInput !== this) {
+                            const col = String.fromCharCode(65 + c);
+                            const rowNum = r + 1;
+                            activeInput.value += col + rowNum;
+                            activeInput.focus();
+                        }
+                    };
+
                     input.onfocus = function() {
+                        activeInput = this;
                         if (this.dataset.formula) {
                             this.value = this.dataset.formula;
                             this.classList.add('show-formula');
                         }
                     };
 
-                    // При потере фокуса — сохраняем и показываем результат
                     input.onblur = function() {
-                        const val = this.value;
                         this.classList.remove('show-formula');
+                        const val = this.value;
                         
                         if (val.startsWith('=')) {
                             const result = calcFormula(val.slice(1));
-                            sheet[key] = { formula: val, computed: result };
+                            sheet[key] = { ...sheet[key], formula: val, computed: result };
                             this.dataset.formula = val;
                             this.value = result;
                         } else {
-                            sheet[key] = { value: val, computed: val };
+                            sheet[key] = { ...sheet[key], value: val, computed: val };
                             delete this.dataset.formula;
                             this.value = val;
                         }
                         saveData();
                     };
 
-                    // Enter = потеря фокуса
                     input.onkeydown = function(e) {
                         if (e.key === 'Enter') this.blur();
+                    };
+
+                    // Контекстное меню для формата
+                    input.oncontextmenu = function(e) {
+                        e.preventDefault();
+                        const format = prompt('Формат: text, number, date, percent', cell.format || 'text');
+                        if (format) {
+                            sheet[key] = { ...sheet[key], format };
+                            render();
+                            saveData();
+                        }
                     };
 
                     td.appendChild(input);
@@ -116,6 +172,13 @@
 
         function calcFormula(expr) {
             try {
+                // SUM, AVERAGE, MIN, MAX, COUNT
+                if (expr.match(/^([A-Z]+)\(([^)]+)\)$/)) {
+                    const func = RegExp.$1;
+                    const range = RegExp.$2;
+                    return calcRange(func, range);
+                }
+                
                 let processed = expr.replace(/([A-Z]+)(\d+)/g, (m, col, row) => {
                     const c = col.charCodeAt(0) - 65;
                     const r = parseInt(row) - 1;
@@ -128,6 +191,121 @@
             } catch (e) {
                 return '#ERROR';
             }
+        }
+
+        function calcRange(func, range) {
+            const [start, end] = range.split(':');
+            const values = [];
+            
+            // Простой парсинг диапазона A1:A5
+            const sc = start.charCodeAt(0) - 65;
+            const sr = parseInt(start.slice(1)) - 1;
+            const ec = end ? end.charCodeAt(0) - 65 : sc;
+            const er = end ? parseInt(end.slice(1)) - 1 : sr;
+            
+            for (let r = Math.min(sr, er); r <= Math.max(sr, er); r++) {
+                for (let c = Math.min(sc, ec); c <= Math.max(sc, ec); c++) {
+                    const cell = sheet[`${r},${c}`] || {};
+                    const val = parseFloat(cell.computed || cell.value || 0);
+                    if (!isNaN(val)) values.push(val);
+                }
+            }
+            
+            switch(func) {
+                case 'SUM': return values.reduce((a, b) => a + b, 0);
+                case 'AVERAGE': return values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+                case 'MIN': return Math.min(...values);
+                case 'MAX': return Math.max(...values);
+                case 'COUNT': return values.length;
+                default: return '#ERROR';
+            }
+        }
+
+        function toggleFormulaPanel() {
+            document.getElementById('formulaPanel').classList.toggle('active');
+        }
+
+        function insertFormula(formula) {
+            if (activeInput) {
+                activeInput.value = formula;
+                activeInput.focus();
+            }
+        }
+
+        function toggleChart() {
+            document.getElementById('chartContainer').classList.toggle('active');
+        }
+
+        function drawChart() {
+            const from = document.getElementById('chartFrom').value;
+            const to = document.getElementById('chartTo').value;
+            const values = [];
+            const labels = [];
+            
+            // Парсим диапазон
+            const sc = from.charCodeAt(0) - 65;
+            const sr = parseInt(from.slice(1)) - 1;
+            const ec = to.charCodeAt(0) - 65;
+            const er = parseInt(to.slice(1)) - 1;
+            
+            for (let r = Math.min(sr, er); r <= Math.max(sr, er); r++) {
+                for (let c = Math.min(sc, ec); c <= Math.max(sc, ec); c++) {
+                    const cell = sheet[`${r},${c}`] || {};
+                    const val = parseFloat(cell.computed || cell.value || 0);
+                    if (!isNaN(val)) {
+                        values.push(val);
+                        labels.push(`${String.fromCharCode(65 + c)}${r + 1}`);
+                    }
+                }
+            }
+            
+            const canvas = document.getElementById('chartCanvas');
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            if (values.length < 2) {
+                ctx.fillText('Нужно минимум 2 точки', 10, 20);
+                return;
+            }
+            
+            const padding = 40;
+            const width = canvas.width - padding * 2;
+            const height = canvas.height - padding * 2;
+            const max = Math.max(...values);
+            const min = Math.min(...values);
+            const range = max - min || 1;
+            
+            // Оси
+            ctx.strokeStyle = '#333';
+            ctx.beginPath();
+            ctx.moveTo(padding, padding);
+            ctx.lineTo(padding, canvas.height - padding);
+            ctx.lineTo(canvas.width - padding, canvas.height - padding);
+            ctx.stroke();
+            
+            // Линия
+            ctx.strokeStyle = '#1976d2';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            
+            values.forEach((val, i) => {
+                const x = padding + (i / (values.length - 1)) * width;
+                const y = canvas.height - padding - ((val - min) / range) * height;
+                
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+                
+                // Точка
+                ctx.fillStyle = '#1976d2';
+                ctx.fillRect(x - 3, y - 3, 6, 6);
+                
+                // Подпись
+                ctx.fillStyle = '#666';
+                ctx.font = '10px sans-serif';
+                ctx.fillText(labels[i], x - 10, canvas.height - padding + 15);
+            });
+            
+            ctx.stroke();
         }
 
         function saveData() {
@@ -156,9 +334,7 @@
         function removeRow() { if (rows > 1) { rows--; render(); saveData(); } }
         function removeRowByIdx(idx) { 
             if (rows > 1) {
-                // Удаляем все ячейки этой строки
                 for (let c = 0; c < cols; c++) delete sheet[`${idx},${c}`];
-                // Сдвигаем оставшиеся
                 for (let r = idx; r < rows - 1; r++) {
                     for (let c = 0; c < cols; c++) {
                         sheet[`${r},${c}`] = sheet[`${r+1},${c}`];
@@ -175,9 +351,7 @@
         function removeCol() { if (cols > 1) { cols--; updateHeader(); render(); saveData(); } }
         function removeColByIdx(idx) {
             if (cols > 1) {
-                // Удаляем все ячейки этой колонки
                 for (let r = 0; r < rows; r++) delete sheet[`${r},${idx}`];
-                // Сдвигаем оставшиеся
                 for (let r = 0; r < rows; r++) {
                     for (let c = idx; c < cols - 1; c++) {
                         sheet[`${r},${c}`] = sheet[`${r},${c+1}`];
@@ -198,6 +372,14 @@
                 render(); 
             } 
         }
+
+        // Режим формул: при вводе = включается клик по ячейкам
+        document.addEventListener('keydown', function(e) {
+            if (activeInput && activeInput.value === '=' && e.key === '=') {
+                isFormulaMode = true;
+            }
+            if (e.key === 'Enter') isFormulaMode = false;
+        });
 
         init();
     </script>
