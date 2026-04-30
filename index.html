@@ -57,7 +57,6 @@
         <button class="danger" onclick="clearAll()">Очистить</button>
     </div>
 
-    <!-- Строка формул как в Excel -->
     <div class="formula-bar">
         <label>f(x)</label>
         <input type="text" id="formulaBar" placeholder="Нажмите на ячейку и введите формулу..." onkeydown="if(event.key==='Enter')applyFormulaBar()">
@@ -98,9 +97,8 @@
     <script>
         const sheet = {};
         let rows = 10, cols = 5;
-        let activeInput = null;
+        let formulaInput = null; // Поле, где вводится формула
         let activeCell = null;
-        let isFormulaMode = false;
 
         function init() {
             loadData();
@@ -129,30 +127,25 @@
                     if (cell.format === 'number') input.classList.add('number');
                     if (cell.format === 'date') input.classList.add('date');
 
-                    // Клик на ячейку = выбор для формулы или строки формул
-                    input.onclick = function() {
-                        activeCell = { row: r, col: c, input: this };
-                        updateFormulaBar();
-                        
-                        // Режим формулы: клик на другую ячейку добавляет ссылку
-                        if (isFormulaMode && activeInput && activeInput !== this) {
+                    // КЛИК на ячейку — если вводим формулу, добавляем ссылку
+                    input.onmousedown = function(e) {
+                        // Если есть активное поле формулы и это другое поле
+                        if (formulaInput && formulaInput !== this && isFormulaInput(formulaInput)) {
+                            e.preventDefault(); // Не даём украсть фокус
                             const col = String.fromCharCode(65 + c);
                             const rowNum = r + 1;
-                            const ref = col + rowNum;
-                            
-                            // Добавляем ссылку в активное поле ввода
-                            if (activeInput === document.getElementById('formulaBar')) {
-                                activeInput.value += ref;
-                            } else {
-                                activeInput.value += ref;
-                            }
-                            activeInput.focus();
+                            formulaInput.value += col + rowNum;
+                            formulaInput.focus();
                         }
                     };
 
                     input.onfocus = function() {
-                        activeInput = this;
-                        activeCell = { row: r, col: c, input: this };
+                        activeCell = { row: r, col: c, input: this, key: key };
+                        
+                        // Если это поле содержит = — оно становится активным для формул
+                        if (this.value === '=' || this.dataset.formula) {
+                            formulaInput = this;
+                        }
                         
                         if (this.dataset.formula) {
                             this.value = this.dataset.formula;
@@ -175,6 +168,12 @@
                             delete this.dataset.formula;
                             this.value = val;
                         }
+                        
+                        // Если это было поле формулы — сбрасываем
+                        if (formulaInput === this) {
+                            formulaInput = null;
+                        }
+                        
                         updateFormulaBar();
                         saveData();
                     };
@@ -184,7 +183,7 @@
                             this.blur();
                         } else if (e.key === '=' && this.value === '') {
                             // Начало формулы
-                            isFormulaMode = true;
+                            formulaInput = this;
                         }
                     };
 
@@ -206,10 +205,14 @@
             }
         }
 
+        function isFormulaInput(input) {
+            return input && (input.value === '=' || input.value.startsWith('=') || input.id === 'formulaBar');
+        }
+
         function updateFormulaBar() {
             const bar = document.getElementById('formulaBar');
             if (activeCell) {
-                const key = `${activeCell.row},${activeCell.col}`;
+                const key = activeCell.key;
                 const cell = sheet[key] || {};
                 bar.placeholder = `Ячейка ${String.fromCharCode(65 + activeCell.col)}${activeCell.row + 1}`;
                 if (document.activeElement !== bar) {
@@ -223,7 +226,7 @@
             const val = bar.value;
             
             if (activeCell) {
-                const key = `${activeCell.row},${activeCell.col}`;
+                const key = activeCell.key;
                 const input = activeCell.input;
                 
                 if (val.startsWith('=')) {
@@ -296,7 +299,6 @@
             const dropdown = document.getElementById('formulaDropdown');
             dropdown.classList.toggle('active');
             
-            // Закрыть при клике вне
             document.onclick = function(e) {
                 if (!btn.contains(e.target) && !dropdown.contains(e.target)) {
                     dropdown.classList.remove('active');
@@ -457,13 +459,6 @@
                 render(); 
             } 
         }
-
-        // Глобальное отключение режима формул
-        document.addEventListener('click', function(e) {
-            if (!e.target.closest('input') && !e.target.closest('.formula-bar')) {
-                isFormulaMode = false;
-            }
-        });
 
         init();
     </script>
