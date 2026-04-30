@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Таблица</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: sans-serif; background: #f5f5f5; padding: 10px; }
+        .header { text-align: center; padding: 15px; font-size: 20px; font-weight: bold; }
+        .toolbar { display: flex; gap: 10px; padding: 10px; background: white; margin-bottom: 10px; border-radius: 8px; flex-wrap: wrap; align-items: center; }
+        .toolbar label { font-weight: 600; color: #333; }
+        .toolbar input[type="number"] { width: 60px; height: 36px; border: 2px solid #e0e0e0; border-radius: 4px; padding: 8px; font-size: 14px; text-align: center; }
+        .toolbar input[type="number"]:focus { border-color: #1976d2; }
+        button { padding: 8px 16px; border: none; border-radius: 4px; background: #1976d2; color: white; cursor: pointer; }
+        button:hover { background: #1565c0; }
+        button.danger { background: #d32f2f; }
+        button.danger:hover { background: #b71c1c; }
+        button.formula-btn { background: #388e3c; font-size: 12px; padding: 4px 8px; }
+        button.formula-btn:hover { background: #2e7d32; }
+        .table-container { overflow-x: auto; background: white; border-radius: 8px; margin-bottom: 10px; }
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #e3f2fd; padding: 10px; font-weight: 600; color: #1976d2; position: relative; }
+        th .del-btn { position: absolute; right: 2px; top: 2px; font-size: 10px; cursor: pointer; color: #d32f2f; display: none; }
+        th:hover .del-btn { display: block; }
+        td { border: 1px solid #e0e0e0; padding: 0; position: relative; }
+        td .del-btn { position: absolute; left: 2px; top: 2px; font-size: 10px; cursor: pointer; color: #d32f2f; display: none; z-index: 10; }
+        td:hover .del-btn { display: block; }
+        input { width: 100%; height: 40px; border: none; padding: 8px; font-size: 14px; outline: none; background: transparent; }
+        input:focus { background: #e3f2fd; }
+        input.show-formula { color: #1976d2; font-style: italic; }
+        input.number { text-align: right; }
+        input.date { color: #7b1fa2; }
+        .formula-bar { display: flex; gap: 10px; padding: 10px; background: white; border-radius: 8px; margin-bottom: 10px; align-items: center; }
+        .formula-bar label { font-weight: bold; color: #1976d2; }
+        .formula-bar input { flex: 1; height: 36px; border: 2px solid #e0e0e0; border-radius: 4px; padding: 8px; font-size: 14px; }
+        .formula-bar input:focus { border-color: #1976d2; background: white; }
+        .corner-btn { background: #1976d2; color: white; border: none; padding: 8px 12px; cursor: pointer; font-size: 12px; }
+        .corner-btn:hover { background: #1565c0; }
+        .formula-dropdown { display: none; position: absolute; top: 100%; left: 0; background: white; border: 1px solid #ccc; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); z-index: 100; }
+        .formula-dropdown.active { display: block; }
+        .formula-dropdown button { display: block; width: 100%; text-align: left; background: white; color: #333; border: none; padding: 8px 12px; }
+        .formula-dropdown button:hover { background: #e3f2fd; color: #1976d2; }
+        .status { padding: 10px; color: #666; font-size: 12px; }
+        .chart-container { margin-top: 20px; padding: 20px; background: white; border-radius: 8px; display: none; }
+        .chart-container.active { display: block; }
+        canvas { max-width: 100%; }
+        .cell-info { flex: 1; text-align: center; font-size: 14px; color: #333; background: #f5f5f5; padding: 6px 12px; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <div class="header">Таблица</div>
+    
+    <div class="toolbar">
+        <label>Строк: <input type="number" id="rowInput" min="1" max="100" value="10" onchange="updateRows()"></label>
+        <label>Колонок: <input type="number" id="colInput" min="1" max="26" value="5" onchange="updateCols()"></label>
+        <button onclick="toggleChart()">График</button>
+        <div id="cellInfo" class="cell-info">Ячейка не выбрана</div>
+        <button class="danger" onclick="clearAll()">Очистить</button>
+    </div>
+
+    <div class="formula-bar">
+        <label>f(x)</label>
+        <input type="text" id="formulaBar" placeholder="Нажмите на ячейку и введите формулу..." onkeydown="if(event.key==='Enter'){this.blur();}" onblur="applyFormulaBar()">
+    </div>
+
+    <div class="table-container">
+        <table id="sheet">
+            <thead>
+                <tr id="header-row">
+                    <th style="position: relative;">
+                        <button class="corner-btn" onclick="toggleFormulaDropdown(this)">fx</button>
+                        <div class="formula-dropdown" id="formulaDropdown">
+                            <button onclick="insertFormula('=SUM(A1:A5)')">SUM</button>
+                            <button onclick="insertFormula('=AVERAGE(A1:A5)')">AVERAGE</button>
+                            <button onclick="insertFormula('=MIN(A1:A5)')">MIN</button>
+                            <button onclick="insertFormula('=MAX(A1:A5)')">MAX</button>
+                            <button onclick="insertFormula('=COUNT(A1:A5)')">COUNT</button>
+                        </div>
+                    </th>
+                </tr>
+            </thead>
+            <tbody id="sheet-body"></tbody>
+        </table>
+    </div>
+
+    <div class="chart-container" id="chartContainer">
+        <h3>График</h3>
+        <canvas id="chartCanvas" width="800" height="400"></canvas>
+        <div>
+            <label>Данные: от <input type="text" id="chartFrom" value="A1" size="3"> до <input type="text" id="chartTo" value="A10" size="3"></label>
+            <button onclick="drawChart()">Построить</button>
+        </div>
+    </div>
+
+    <div class="status" id="status">Готово</div>
+
+    <script>
+        const sheet = {};
+        let rows = 10, cols = 5;
+        let formulaInput = null;
+        let activeCell = null;
+
+        function init() {
+            loadSheet();
+            updateHeader();
+            render();
+        }
+
+        async function loadSheet() {
+            const res = await fetch('/api/sheet');
+            const data = await res.json();
+            Object.keys(sheet).forEach(k => delete sheet[k]);
+            for (const [addr, cell] of Object.entries(data)) {
+                const m = addr.match(/([A-Z]+)(\d+)/);
+                if (m) {
+                    const c = m[1].charCodeAt(0) - 65;
+                    const r = parseInt(m[2]) - 1;
+                    sheet[`${r},${c}`] = {
+                        value: cell.value,
+                        formula: cell.formula,
+                        computed: cell.computed,
+                        format: cell.format
+                    };
+                }
+            }
+            render();
+            updateCellInfo();
+        }
+
+        async function syncCell(addr, val) {
+            await fetch(`/api/cell/${addr}`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({value: val})
+            });
+            await loadSheet();
+        }
+
+        function rcToAddr(r, c) {
+            return String.fromCharCode(65 + c) + (r + 1);
+        }
+
+        function updateRows() {
+            const newRows = parseInt(document.getElementById('rowInput').value);
+            if (newRows >= 1 && newRows <= 100) {
+                rows = newRows;
+                render();
+            }
+        }
+
+        function updateCols() {
+            const newCols = parseInt(document.getElementById('colInput').value);
+            if (newCols >= 1 && newCols <= 26) {
+                cols = newCols;
+                updateHeader();
+                render();
+            }
+        }
+
+        function render() {
+            const tbody = document.getElementById('sheet-body');
+            tbody.innerHTML = '';
+
+            for (let r = 0; r < rows; r++) {
+                const tr = document.createElement('tr');
+                const th = document.createElement('th');
+                th.innerHTML = `${r + 1}<span class="del-btn" onclick="removeRowByIdx(${r})">×</span>`;
+                tr.appendChild(th);
+
+                for (let c = 0; c < cols; c++) {
+                    const td = document.createElement('td');
+                    const input = document.createElement('input');
+                    const key = `${r},${c}`;
+                    const cell = sheet[key] || {};
+                    
+                    input.value = cell.computed || cell.value || '';
+                    if (cell.formula) input.dataset.formula = cell.formula;
+                    if (cell.format === 'number') input.classList.add('number');
+                    if (cell.format === 'date') input.classList.add('date');
+
+                    input.onmousedown = function(e) {
+                        if (formulaInput && formulaInput !== this && isFormulaInput(formulaInput)) {
+                            e.preventDefault();
+                            const col = String.fromCharCode(65 + c);
+                            const rowNum = r + 1;
+                            formulaInput.value += col + rowNum;
+                            formulaInput.focus();
+                        }
+                    };
+
+                    input.onfocus = function() {
+                        activeCell = { row: r, col: c, input: this, key: key };
+                        
+                        if (this.value === '=' || this.dataset.formula) {
+                            formulaInput = this;
+                        }
+                        
+                        if (this.dataset.formula) {
+                            this.value = this.dataset.formula;
+                            this.classList.add('show-formula');
+                        }
+                        updateFormulaBar();
+                    };
+
+                    input.onblur = function() {
+                        this.classList.remove('show-formula');
+                        const val = this.value;
+                        
+                        if (val.startsWith('=')) {
+                            const result = calcFormula(val.slice(1));
+                            sheet[key] = { ...sheet[key], formula: val, computed: result };
+                            this.dataset.formula = val;
+                            this.value = result;
+                        } else {
+                            sheet[key] = { ...sheet[key], value: val, computed: val };
+                            delete this.dataset.formula;
+                            this.value = val;
+                        }
+                        
+                        if (formulaInput === this) {
+                            formulaInput = null;
+                        }
+                        
+                        updateFormulaBar();
+                        saveData();
+                    };
+
+                    input.onkeydown = function(e) {
+                        if (e.key === 'Enter') {
+                            this.blur();
+                        } else if (e.key === '=' && this.value === '') {
+                            formulaInput = this;
+                        }
+                    };
+
+                    input.oncontextmenu = function(e) {
+                        e.preventDefault();
+                        const format = prompt('Формат: text, number, date, percent', cell.format || 'text');
+                        if (format) {
+                            sheet[key] = { ...sheet[key], format };
+                            render();
+                            saveData();
+                        }
+                    };
+
+                    td.appendChild(input);
+                    tr.appendChild(td);
+                }
+                tbody.appendChild(tr);
+            }
+        }
+
+        function isFormulaInput(input) {
+            return input && (input.value === '=' || input.value.startsWith('=') || input.id === 'formulaBar');
+        }
+
+        function updateCellInfo() {
+            const info = document.getElementById('cellInfo');
+            if (activeCell) {
+                const key = activeCell.key;
+                const cell = sheet[key] || {};
+                const addr = `${String.fromCharCode(65 + activeCell.col)}${activeCell.row + 1}`;
+                const formula = cell.formula || '';
+                const value = cell.computed || cell.value || '';
+                info.innerHTML = `<b>${addr}</b> | Формула: ${formula || '—'} | Значение: ${value || '—'}`;
+            } else {
+                info.textContent = 'Ячейка не выбрана';
+            }
+        }
+
+        function updateFormulaBar() {
+            const bar = document.getElementById('formulaBar');
+            if (activeCell) {
+                const key = activeCell.key;
+                const cell = sheet[key] || {};
+                bar.placeholder = `Ячейка ${String.fromCharCode(65 + activeCell.col)}${activeCell.row + 1}`;
+                if (document.activeElement !== bar) {
+                    bar.value = cell.formula || cell.value || '';
+                }
+            }
+            updateCellInfo();
+        }
+
+        function applyFormulaBar() {
+            const bar = document.getElementById('formulaBar');
+            const val = bar.value;
+            
+            if (activeCell) {
+                const key = activeCell.key;
+                const input = activeCell.input;
+                
+                if (val.startsWith('=')) {
+                    const result = calcFormula(val.slice(1));
+                    sheet[key] = { ...sheet[key], formula: val, computed: result };
+                    input.dataset.formula = val;
+                    input.value = result;
+                } else {
+                    sheet[key] = { ...sheet[key], value: val, computed: val };
+                    delete input.dataset.formula;
+                    input.value = val;
+                }
+                
+                syncCell(rcToAddr(activeCell.row, activeCell.col), val);
+            }
+        }
+
+        function calcFormula(expr) {
+            try {
+                if (expr.match(/^([A-Z]+)\(([^)]+)\)$/)) {
+                    const func = RegExp.$1;
+                    const range = RegExp.$2;
+                    return calcRange(func, range);
+                }
+                
+                let processed = expr.replace(/([A-Z]+)(\d+)/g, (m, col, row) => {
+                    const c = col.charCodeAt(0) - 65;
+                    const r = parseInt(row) - 1;
+                    const key = `${r},${c}`;
+                    const cell = sheet[key] || {};
+                    const val = parseFloat(cell.computed || cell.value || 0);
+                    return isNaN(val) ? 0 : val;
+                });
+                return eval(processed) || 0;
+            } catch (e) {
+                return '#ERROR';
+            }
+        }
+
+        function calcRange(func, range) {
+            const [start, end] = range.split(':');
+            const values = [];
+            
+            const sc = start.charCodeAt(0) - 65;
+            const sr = parseInt(start.slice(1)) - 1;
+            const ec = end ? end.charCodeAt(0) - 65 : sc;
+            const er = end ? parseInt(end.slice(1)) - 1 : sr;
+            
+            for (let r = Math.min(sr, er); r <= Math.max(sr, er); r++) {
+                for (let c = Math.min(sc, ec); c <= Math.max(sc, ec); c++) {
+                    const cell = sheet[`${r},${c}`] || {};
+                    const val = parseFloat(cell.computed || cell.value || 0);
+                    if (!isNaN(val)) values.push(val);
+                }
+            }
+            
+            switch(func) {
+                case 'SUM': return values.reduce((a, b) => a + b, 0);
+                case 'AVERAGE': return values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+                case 'MIN': return Math.min(...values);
+                case 'MAX': return Math.max(...values);
+                case 'COUNT': return values.length;
+                default: return '#ERROR';
+            }
+        }
+
+        function toggleFormulaDropdown(btn) {
+            const dropdown = document.getElementById('formulaDropdown');
+            dropdown.classList.toggle('active');
+            
+            document.onclick = function(e) {
+                if (!btn.contains(e.target) && !dropdown.contains(e.target)) {
+                    dropdown.classList.remove('active');
+                }
+            };
+        }
+
+        function insertFormula(formula) {
+            const bar = document.getElementById('formulaBar');
+            bar.value = formula;
+            bar.focus();
+            document.getElementById('formulaDropdown').classList.remove('active');
+        }
+
+        function toggleChart() {
+            document.getElementById('chartContainer').classList.toggle('active');
+        }
+
+        function drawChart() {
+            const from = document.getElementById('chartFrom').value;
+            const to = document.getElementById('chartTo').value;
+            const values = [];
+            const labels = [];
+            
+            const sc = from.charCodeAt(0) - 65;
+            const sr = parseInt(from.slice(1)) - 1;
+            const ec = to.charCodeAt(0) - 65;
+            const er = parseInt(to.slice(1)) - 1;
+            
+            for (let r = Math.min(sr, er); r <= Math.max(sr, er); r++) {
+                for (let c = Math.min(sc, ec); c <= Math.max(sc, ec); c++) {
+                    const cell = sheet[`${r},${c}`] || {};
+                    const val = parseFloat(cell.computed || cell.value || 0);
+                    if (!isNaN(val)) {
+                        values.push(val);
+                        labels.push(`${String.fromCharCode(65 + c)}${r + 1}`);
+                    }
+                }
+            }
+            
+            const canvas = document.getElementById('chartCanvas');
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            if (values.length < 2) {
+                ctx.fillText('Нужно минимум 2 точки', 10, 20);
+                return;
+            }
+            
+            const padding = 40;
+            const width = canvas.width - padding * 2;
+            const height = canvas.height - padding * 2;
+            const max = Math.max(...values);
+            const min = Math.min(...values);
+            const range = max - min || 1;
+            
+            ctx.strokeStyle = '#333';
+            ctx.beginPath();
+            ctx.moveTo(padding, padding);
+            ctx.lineTo(padding, canvas.height - padding);
+            ctx.lineTo(canvas.width - padding, canvas.height - padding);
+            ctx.stroke();
+            
+            ctx.strokeStyle = '#1976d2';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            
+            values.forEach((val, i) => {
+                const x = padding + (i / (values.length - 1)) * width;
+                const y = canvas.height - padding - ((val - min) / range) * height;
+                
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+                
+                ctx.fillStyle = '#1976d2';
+                ctx.fillRect(x - 3, y - 3, 6, 6);
+                
+                ctx.fillStyle = '#666';
+                ctx.font = '10px sans-serif';
+                ctx.fillText(labels[i], x - 10, canvas.height - padding + 15);
+            });
+            
+            ctx.stroke();
+        }
+
+        async function clearAll() {
+            if (confirm('Очистить всю таблицу?')) {
+                await fetch('/api/clear', {method: 'DELETE'});
+                await loadSheet();
+            }
+        }
+
+        function updateHeader() {
+            const hr = document.getElementById('header-row');
+            hr.innerHTML = `
+                <th style="position: relative;">
+                    <button class="corner-btn" onclick="toggleFormulaDropdown(this)">fx</button>
+                    <div class="formula-dropdown" id="formulaDropdown">
+                        <button onclick="insertFormula('=SUM(A1:A5)')">SUM</button>
+                        <button onclick="insertFormula('=AVERAGE(A1:A5)')">AVERAGE</button>
+                        <button onclick="insertFormula('=MIN(A1:A5)')">MIN</button>
+                        <button onclick="insertFormula('=MAX(A1:A5)')">MAX</button>
+                        <button onclick="insertFormula('=COUNT(A1:A5)')">COUNT</button>
+                    </div>
+                </th>
+            `;
+            for (let i = 0; i < cols; i++) {
+                hr.innerHTML += `<th>${String.fromCharCode(65 + i)}<span class="del-btn" onclick="removeColByIdx(${i})">×</span></th>`;
+            }
+        }
+
+        function removeRowByIdx(idx) {
+            if (rows > 1) {
+                for (let c = 0; c < cols; c++) delete sheet[`${idx},${c}`];
+                for (let r = idx; r < rows - 1; r++) {
+                    for (let c = 0; c < cols; c++) {
+                        sheet[`${r},${c}`] = sheet[`${r+1},${c}`];
+                        delete sheet[`${r+1},${c}`];
+                    }
+                }
+                rows--;
+                document.getElementById('rowInput').value = rows;
+                render();
+            }
+        }
+
+        function removeColByIdx(idx) {
+            if (cols > 1) {
+                for (let r = 0; r < rows; r++) delete sheet[`${r},${idx}`];
+                for (let r = 0; r < rows; r++) {
+                    for (let c = idx; c < cols - 1; c++) {
+                        sheet[`${r},${c}`] = sheet[`${r},${c+1}`];
+                        delete sheet[`${r},${c+1}`];
+                    }
+                }
+                cols--;
+                document.getElementById('colInput').value = cols;
+                updateHeader();
+                render();
+            }
+        }
+
+        init();
+    </script>
+</body>
+</html>
