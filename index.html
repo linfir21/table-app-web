@@ -45,6 +45,7 @@
         .chart-container { margin-top: 20px; padding: 20px; background: white; border-radius: 8px; display: none; }
         .chart-container.active { display: block; }
         canvas { max-width: 100%; }
+        .cell-info { flex: 1; text-align: center; font-size: 14px; color: #333; background: #f5f5f5; padding: 6px 12px; border-radius: 4px; }
     </style>
 </head>
 <body>
@@ -54,14 +55,13 @@
         <label>Строк: <input type="number" id="rowInput" min="1" max="100" value="10" onchange="updateRows()"></label>
         <label>Колонок: <input type="number" id="colInput" min="1" max="26" value="5" onchange="updateCols()"></label>
         <button onclick="toggleChart()">График</button>
-        <button onclick="saveData()">Сохранить</button>
+        <div id="cellInfo" class="cell-info">Ячейка не выбрана</div>
         <button class="danger" onclick="clearAll()">Очистить</button>
     </div>
 
     <div class="formula-bar">
         <label>f(x)</label>
-        <input type="text" id="formulaBar" placeholder="Нажмите на ячейку и введите формулу..." onkeydown="if(event.key==='Enter')applyFormulaBar()">
-        <button onclick="applyFormulaBar()">✓</button>
+        <input type="text" id="formulaBar" placeholder="Нажмите на ячейку и введите формулу..." onkeydown="if(event.key==='Enter'){this.blur();}" onblur="applyFormulaBar()">
     </div>
 
     <div class="table-container">
@@ -223,6 +223,20 @@
             return input && (input.value === '=' || input.value.startsWith('=') || input.id === 'formulaBar');
         }
 
+        function updateCellInfo() {
+            const info = document.getElementById('cellInfo');
+            if (activeCell) {
+                const key = activeCell.key;
+                const cell = sheet[key] || {};
+                const addr = `${String.fromCharCode(65 + activeCell.col)}${activeCell.row + 1}`;
+                const formula = cell.formula || '';
+                const value = cell.computed || cell.value || '';
+                info.innerHTML = `<b>${addr}</b> | Формула: ${formula || '—'} | Значение: ${value || '—'}`;
+            } else {
+                info.textContent = 'Ячейка не выбрана';
+            }
+        }
+
         function updateFormulaBar() {
             const bar = document.getElementById('formulaBar');
             if (activeCell) {
@@ -233,6 +247,7 @@
                     bar.value = cell.formula || cell.value || '';
                 }
             }
+            updateCellInfo();
         }
 
         function applyFormulaBar() {
@@ -256,7 +271,6 @@
                 
                 render();
                 saveData();
-                bar.value = '';
             }
         }
 
