@@ -9,6 +9,9 @@
         body { font-family: sans-serif; background: #f5f5f5; padding: 10px; }
         .header { text-align: center; padding: 15px; font-size: 20px; font-weight: bold; }
         .toolbar { display: flex; gap: 10px; padding: 10px; background: white; margin-bottom: 10px; border-radius: 8px; flex-wrap: wrap; align-items: center; }
+        .toolbar label { font-weight: 600; color: #333; }
+        .toolbar input[type="number"] { width: 60px; height: 36px; border: 2px solid #e0e0e0; border-radius: 4px; padding: 8px; font-size: 14px; text-align: center; }
+        .toolbar input[type="number"]:focus { border-color: #1976d2; }
         button { padding: 8px 16px; border: none; border-radius: 4px; background: #1976d2; color: white; cursor: pointer; }
         button:hover { background: #1565c0; }
         button.danger { background: #d32f2f; }
@@ -48,10 +51,8 @@
     <div class="header">Таблица</div>
     
     <div class="toolbar">
-        <button onclick="addRow()">+ Строка</button>
-        <button onclick="removeRow()">- Строка</button>
-        <button onclick="addCol()">+ Колонка</button>
-        <button onclick="removeCol()">- Колонка</button>
+        <label>Строк: <input type="number" id="rowInput" min="1" max="100" value="10" onchange="updateRows()"></label>
+        <label>Колонок: <input type="number" id="colInput" min="1" max="26" value="5" onchange="updateCols()"></label>
         <button onclick="toggleChart()">График</button>
         <button onclick="saveData()">Сохранить</button>
         <button class="danger" onclick="clearAll()">Очистить</button>
@@ -97,13 +98,32 @@
     <script>
         const sheet = {};
         let rows = 10, cols = 5;
-        let formulaInput = null; // Поле, где вводится формула
+        let formulaInput = null;
         let activeCell = null;
 
         function init() {
             loadData();
             updateHeader();
             render();
+        }
+
+        function updateRows() {
+            const newRows = parseInt(document.getElementById('rowInput').value);
+            if (newRows >= 1 && newRows <= 100) {
+                rows = newRows;
+                render();
+                saveData();
+            }
+        }
+
+        function updateCols() {
+            const newCols = parseInt(document.getElementById('colInput').value);
+            if (newCols >= 1 && newCols <= 26) {
+                cols = newCols;
+                updateHeader();
+                render();
+                saveData();
+            }
         }
 
         function render() {
@@ -127,11 +147,9 @@
                     if (cell.format === 'number') input.classList.add('number');
                     if (cell.format === 'date') input.classList.add('date');
 
-                    // КЛИК на ячейку — если вводим формулу, добавляем ссылку
                     input.onmousedown = function(e) {
-                        // Если есть активное поле формулы и это другое поле
                         if (formulaInput && formulaInput !== this && isFormulaInput(formulaInput)) {
-                            e.preventDefault(); // Не даём украсть фокус
+                            e.preventDefault();
                             const col = String.fromCharCode(65 + c);
                             const rowNum = r + 1;
                             formulaInput.value += col + rowNum;
@@ -142,7 +160,6 @@
                     input.onfocus = function() {
                         activeCell = { row: r, col: c, input: this, key: key };
                         
-                        // Если это поле содержит = — оно становится активным для формул
                         if (this.value === '=' || this.dataset.formula) {
                             formulaInput = this;
                         }
@@ -169,7 +186,6 @@
                             this.value = val;
                         }
                         
-                        // Если это было поле формулы — сбрасываем
                         if (formulaInput === this) {
                             formulaInput = null;
                         }
@@ -182,12 +198,10 @@
                         if (e.key === 'Enter') {
                             this.blur();
                         } else if (e.key === '=' && this.value === '') {
-                            // Начало формулы
                             formulaInput = this;
                         }
                     };
 
-                    // Правый клик = формат
                     input.oncontextmenu = function(e) {
                         e.preventDefault();
                         const format = prompt('Формат: text, number, date, percent', cell.format || 'text');
@@ -396,6 +410,10 @@
             if (data) Object.assign(sheet, JSON.parse(data));
             rows = parseInt(localStorage.getItem('sheet_rows')) || 10;
             cols = parseInt(localStorage.getItem('sheet_cols')) || 5;
+            
+            // Обновляем поля ввода
+            document.getElementById('rowInput').value = rows;
+            document.getElementById('colInput').value = cols;
         }
 
         function updateHeader() {
@@ -417,8 +435,6 @@
             }
         }
 
-        function addRow() { rows++; render(); saveData(); }
-        function removeRow() { if (rows > 1) { rows--; render(); saveData(); } }
         function removeRowByIdx(idx) { 
             if (rows > 1) {
                 for (let c = 0; c < cols; c++) delete sheet[`${idx},${c}`];
@@ -429,13 +445,12 @@
                     }
                 }
                 rows--;
+                document.getElementById('rowInput').value = rows;
                 render();
                 saveData();
             }
         }
         
-        function addCol() { cols++; updateHeader(); render(); saveData(); }
-        function removeCol() { if (cols > 1) { cols--; updateHeader(); render(); saveData(); } }
         function removeColByIdx(idx) {
             if (cols > 1) {
                 for (let r = 0; r < rows; r++) delete sheet[`${r},${idx}`];
@@ -446,6 +461,7 @@
                     }
                 }
                 cols--;
+                document.getElementById('colInput').value = cols;
                 updateHeader();
                 render();
                 saveData();
