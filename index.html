@@ -13,12 +13,9 @@
         button:hover { background: #1565c0; }
         button.danger { background: #d32f2f; }
         button.danger:hover { background: #b71c1c; }
-        button.formula-btn { background: #388e3c; }
+        button.formula-btn { background: #388e3c; font-size: 12px; padding: 4px 8px; }
         button.formula-btn:hover { background: #2e7d32; }
-        select { padding: 8px; border-radius: 4px; border: 1px solid #ccc; }
-        .formula-panel { display: none; padding: 10px; background: #e8f5e9; margin-bottom: 10px; border-radius: 8px; }
-        .formula-panel.active { display: block; }
-        .table-container { overflow-x: auto; background: white; border-radius: 8px; }
+        .table-container { overflow-x: auto; background: white; border-radius: 8px; margin-bottom: 10px; }
         table { width: 100%; border-collapse: collapse; }
         th { background: #e3f2fd; padding: 10px; font-weight: 600; color: #1976d2; position: relative; }
         th .del-btn { position: absolute; right: 2px; top: 2px; font-size: 10px; cursor: pointer; color: #d32f2f; display: none; }
@@ -31,6 +28,16 @@
         input.show-formula { color: #1976d2; font-style: italic; }
         input.number { text-align: right; }
         input.date { color: #7b1fa2; }
+        .formula-bar { display: flex; gap: 10px; padding: 10px; background: white; border-radius: 8px; margin-bottom: 10px; align-items: center; }
+        .formula-bar label { font-weight: bold; color: #1976d2; }
+        .formula-bar input { flex: 1; height: 36px; border: 2px solid #e0e0e0; border-radius: 4px; padding: 8px; font-size: 14px; }
+        .formula-bar input:focus { border-color: #1976d2; background: white; }
+        .corner-btn { background: #1976d2; color: white; border: none; padding: 8px 12px; cursor: pointer; font-size: 12px; }
+        .corner-btn:hover { background: #1565c0; }
+        .formula-dropdown { display: none; position: absolute; top: 100%; left: 0; background: white; border: 1px solid #ccc; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); z-index: 100; }
+        .formula-dropdown.active { display: block; }
+        .formula-dropdown button { display: block; width: 100%; text-align: left; background: white; color: #333; border: none; padding: 8px 12px; }
+        .formula-dropdown button:hover { background: #e3f2fd; color: #1976d2; }
         .status { padding: 10px; color: #666; font-size: 12px; }
         .chart-container { margin-top: 20px; padding: 20px; background: white; border-radius: 8px; display: none; }
         .chart-container.active { display: block; }
@@ -45,24 +52,34 @@
         <button onclick="removeRow()">- Строка</button>
         <button onclick="addCol()">+ Колонка</button>
         <button onclick="removeCol()">- Колонка</button>
-        <button class="formula-btn" onclick="toggleFormulaPanel()">Функции</button>
         <button onclick="toggleChart()">График</button>
         <button onclick="saveData()">Сохранить</button>
         <button class="danger" onclick="clearAll()">Очистить</button>
     </div>
 
-    <div class="formula-panel" id="formulaPanel">
-        <strong>Функции:</strong>
-        <button class="formula-btn" onclick="insertFormula('=SUM(A1:A5)')">SUM</button>
-        <button class="formula-btn" onclick="insertFormula('=AVERAGE(A1:A5)')">AVERAGE</button>
-        <button class="formula-btn" onclick="insertFormula('=MIN(A1:A5)')">MIN</button>
-        <button class="formula-btn" onclick="insertFormula('=MAX(A1:A5)')">MAX</button>
-        <button class="formula-btn" onclick="insertFormula('=COUNT(A1:A5)')">COUNT</button>
+    <!-- Строка формул как в Excel -->
+    <div class="formula-bar">
+        <label>f(x)</label>
+        <input type="text" id="formulaBar" placeholder="Нажмите на ячейку и введите формулу..." onkeydown="if(event.key==='Enter')applyFormulaBar()">
+        <button onclick="applyFormulaBar()">✓</button>
     </div>
 
     <div class="table-container">
         <table id="sheet">
-            <thead><tr id="header-row"><th></th></tr></thead>
+            <thead>
+                <tr id="header-row">
+                    <th style="position: relative;">
+                        <button class="corner-btn" onclick="toggleFormulaDropdown(this)">fx</button>
+                        <div class="formula-dropdown" id="formulaDropdown">
+                            <button onclick="insertFormula('=SUM(A1:A5)')">SUM</button>
+                            <button onclick="insertFormula('=AVERAGE(A1:A5)')">AVERAGE</button>
+                            <button onclick="insertFormula('=MIN(A1:A5)')">MIN</button>
+                            <button onclick="insertFormula('=MAX(A1:A5)')">MAX</button>
+                            <button onclick="insertFormula('=COUNT(A1:A5)')">COUNT</button>
+                        </div>
+                    </th>
+                </tr>
+            </thead>
             <tbody id="sheet-body"></tbody>
         </table>
     </div>
@@ -82,6 +99,7 @@
         const sheet = {};
         let rows = 10, cols = 5;
         let activeInput = null;
+        let activeCell = null;
         let isFormulaMode = false;
 
         function init() {
@@ -108,27 +126,39 @@
                     
                     input.value = cell.computed || cell.value || '';
                     if (cell.formula) input.dataset.formula = cell.formula;
-                    
-                    // Формат ячейки
                     if (cell.format === 'number') input.classList.add('number');
                     if (cell.format === 'date') input.classList.add('date');
 
-                    // Клик на ячейку при вводе формулы
+                    // Клик на ячейку = выбор для формулы или строки формул
                     input.onclick = function() {
+                        activeCell = { row: r, col: c, input: this };
+                        updateFormulaBar();
+                        
+                        // Режим формулы: клик на другую ячейку добавляет ссылку
                         if (isFormulaMode && activeInput && activeInput !== this) {
                             const col = String.fromCharCode(65 + c);
                             const rowNum = r + 1;
-                            activeInput.value += col + rowNum;
+                            const ref = col + rowNum;
+                            
+                            // Добавляем ссылку в активное поле ввода
+                            if (activeInput === document.getElementById('formulaBar')) {
+                                activeInput.value += ref;
+                            } else {
+                                activeInput.value += ref;
+                            }
                             activeInput.focus();
                         }
                     };
 
                     input.onfocus = function() {
                         activeInput = this;
+                        activeCell = { row: r, col: c, input: this };
+                        
                         if (this.dataset.formula) {
                             this.value = this.dataset.formula;
                             this.classList.add('show-formula');
                         }
+                        updateFormulaBar();
                     };
 
                     input.onblur = function() {
@@ -145,14 +175,20 @@
                             delete this.dataset.formula;
                             this.value = val;
                         }
+                        updateFormulaBar();
                         saveData();
                     };
 
                     input.onkeydown = function(e) {
-                        if (e.key === 'Enter') this.blur();
+                        if (e.key === 'Enter') {
+                            this.blur();
+                        } else if (e.key === '=' && this.value === '') {
+                            // Начало формулы
+                            isFormulaMode = true;
+                        }
                     };
 
-                    // Контекстное меню для формата
+                    // Правый клик = формат
                     input.oncontextmenu = function(e) {
                         e.preventDefault();
                         const format = prompt('Формат: text, number, date, percent', cell.format || 'text');
@@ -170,9 +206,45 @@
             }
         }
 
+        function updateFormulaBar() {
+            const bar = document.getElementById('formulaBar');
+            if (activeCell) {
+                const key = `${activeCell.row},${activeCell.col}`;
+                const cell = sheet[key] || {};
+                bar.placeholder = `Ячейка ${String.fromCharCode(65 + activeCell.col)}${activeCell.row + 1}`;
+                if (document.activeElement !== bar) {
+                    bar.value = cell.formula || cell.value || '';
+                }
+            }
+        }
+
+        function applyFormulaBar() {
+            const bar = document.getElementById('formulaBar');
+            const val = bar.value;
+            
+            if (activeCell) {
+                const key = `${activeCell.row},${activeCell.col}`;
+                const input = activeCell.input;
+                
+                if (val.startsWith('=')) {
+                    const result = calcFormula(val.slice(1));
+                    sheet[key] = { ...sheet[key], formula: val, computed: result };
+                    input.dataset.formula = val;
+                    input.value = result;
+                } else {
+                    sheet[key] = { ...sheet[key], value: val, computed: val };
+                    delete input.dataset.formula;
+                    input.value = val;
+                }
+                
+                render();
+                saveData();
+                bar.value = '';
+            }
+        }
+
         function calcFormula(expr) {
             try {
-                // SUM, AVERAGE, MIN, MAX, COUNT
                 if (expr.match(/^([A-Z]+)\(([^)]+)\)$/)) {
                     const func = RegExp.$1;
                     const range = RegExp.$2;
@@ -197,7 +269,6 @@
             const [start, end] = range.split(':');
             const values = [];
             
-            // Простой парсинг диапазона A1:A5
             const sc = start.charCodeAt(0) - 65;
             const sr = parseInt(start.slice(1)) - 1;
             const ec = end ? end.charCodeAt(0) - 65 : sc;
@@ -221,15 +292,23 @@
             }
         }
 
-        function toggleFormulaPanel() {
-            document.getElementById('formulaPanel').classList.toggle('active');
+        function toggleFormulaDropdown(btn) {
+            const dropdown = document.getElementById('formulaDropdown');
+            dropdown.classList.toggle('active');
+            
+            // Закрыть при клике вне
+            document.onclick = function(e) {
+                if (!btn.contains(e.target) && !dropdown.contains(e.target)) {
+                    dropdown.classList.remove('active');
+                }
+            };
         }
 
         function insertFormula(formula) {
-            if (activeInput) {
-                activeInput.value = formula;
-                activeInput.focus();
-            }
+            const bar = document.getElementById('formulaBar');
+            bar.value = formula;
+            bar.focus();
+            document.getElementById('formulaDropdown').classList.remove('active');
         }
 
         function toggleChart() {
@@ -242,7 +321,6 @@
             const values = [];
             const labels = [];
             
-            // Парсим диапазон
             const sc = from.charCodeAt(0) - 65;
             const sr = parseInt(from.slice(1)) - 1;
             const ec = to.charCodeAt(0) - 65;
@@ -275,7 +353,6 @@
             const min = Math.min(...values);
             const range = max - min || 1;
             
-            // Оси
             ctx.strokeStyle = '#333';
             ctx.beginPath();
             ctx.moveTo(padding, padding);
@@ -283,7 +360,6 @@
             ctx.lineTo(canvas.width - padding, canvas.height - padding);
             ctx.stroke();
             
-            // Линия
             ctx.strokeStyle = '#1976d2';
             ctx.lineWidth = 2;
             ctx.beginPath();
@@ -295,11 +371,9 @@
                 if (i === 0) ctx.moveTo(x, y);
                 else ctx.lineTo(x, y);
                 
-                // Точка
                 ctx.fillStyle = '#1976d2';
                 ctx.fillRect(x - 3, y - 3, 6, 6);
                 
-                // Подпись
                 ctx.fillStyle = '#666';
                 ctx.font = '10px sans-serif';
                 ctx.fillText(labels[i], x - 10, canvas.height - padding + 15);
@@ -324,7 +398,18 @@
 
         function updateHeader() {
             const hr = document.getElementById('header-row');
-            hr.innerHTML = '<th></th>';
+            hr.innerHTML = `
+                <th style="position: relative;">
+                    <button class="corner-btn" onclick="toggleFormulaDropdown(this)">fx</button>
+                    <div class="formula-dropdown" id="formulaDropdown">
+                        <button onclick="insertFormula('=SUM(A1:A5)')">SUM</button>
+                        <button onclick="insertFormula('=AVERAGE(A1:A5)')">AVERAGE</button>
+                        <button onclick="insertFormula('=MIN(A1:A5)')">MIN</button>
+                        <button onclick="insertFormula('=MAX(A1:A5)')">MAX</button>
+                        <button onclick="insertFormula('=COUNT(A1:A5)')">COUNT</button>
+                    </div>
+                </th>
+            `;
             for (let i = 0; i < cols; i++) {
                 hr.innerHTML += `<th>${String.fromCharCode(65 + i)}<span class="del-btn" onclick="removeColByIdx(${i})">×</span></th>`;
             }
@@ -373,12 +458,11 @@
             } 
         }
 
-        // Режим формул: при вводе = включается клик по ячейкам
-        document.addEventListener('keydown', function(e) {
-            if (activeInput && activeInput.value === '=' && e.key === '=') {
-                isFormulaMode = true;
+        // Глобальное отключение режима формул
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('input') && !e.target.closest('.formula-bar')) {
+                isFormulaMode = false;
             }
-            if (e.key === 'Enter') isFormulaMode = false;
         });
 
         init();
